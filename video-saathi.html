@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>वीडियो साथी</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;600;700&display=swap">
+<style>
+:root{--bg:#eef2f6;--card:#fff;--ink:#14213d;--mute:#56627a;--line:#d5dce6;--accent:#1f5eff;--onacc:#fff;--err:#c0262d;color-scheme:light dark}
+@media (prefers-color-scheme:dark){:root{--bg:#0b1020;--card:#151c30;--ink:#eef1f8;--mute:#a3aec7;--line:#27304a;--accent:#ffc933;--onacc:#14213d;--err:#ff8a8a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.6 "Noto Sans Devanagari",system-ui,"Segoe UI",sans-serif;padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0)}
+header,.box,.row,.hint,.wrap{max-width:1100px;margin-left:auto;margin-right:auto}
+header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px 4px}
+h1{font-size:1.25rem;margin:0}
+.box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin:8px 16px}
+@media (min-width:1132px){.box{margin-left:auto;margin-right:auto}}
+label{display:block;margin:6px 0;font-size:.92rem;color:var(--mute)}
+input[type=text],input[type=password],input:not([type]),select{width:100%;font:inherit;padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)}
+.row{display:flex;gap:8px;padding:8px 16px}
+.row input{flex:1;min-width:0}
+button{font:inherit;cursor:pointer}
+.pri{background:var(--accent);color:var(--onacc);border:0;border-radius:8px;padding:8px 18px;font-weight:600}
+.chip{background:var(--card);color:var(--ink);border:1.5px solid var(--line);border-radius:99px;padding:3px 14px;white-space:nowrap}
+.chip.on{border-color:var(--accent);background:var(--accent);color:var(--onacc);font-weight:600}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.hint{font-size:.88rem;color:var(--mute);padding:0 16px;margin-top:4px;margin-bottom:4px}
+.box .hint{padding:0}
+.hint.err{color:var(--err)}
+.wrap{display:grid;gap:14px;padding:8px 16px 24px}
+@media (min-width:760px){.wrap{grid-template-columns:1.2fr 1fr;align-items:start}}
+.vid{position:relative;aspect-ratio:16/9;background:#000;border-radius:12px;overflow:hidden}
+.vid iframe,#yt{position:absolute;inset:0;width:100%;height:100%;border:0}
+.chips{display:flex;gap:8px;overflow-x:auto;padding:10px 0 4px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;min-height:160px}
+.panel img{width:100%;max-height:260px;object-fit:cover;border-radius:8px;display:block}
+.cap{font-size:.78rem;color:var(--mute);margin:2px 2px 0;text-align:right}
+h2{font-size:1.3rem;margin:8px 0 2px}
+h2 small{font-weight:400;color:var(--mute);font-size:.9rem;margin-left:6px}
+ul{margin:6px 0 10px;padding-left:20px}li{margin:3px 0}
+.tip{border-left:4px solid var(--accent);padding:4px 10px;background:var(--bg);border-radius:0 8px 8px 0;font-size:.95rem}
+a{color:var(--accent)}
+</style>
+</head>
+<body>
+<header><h1>🎬 वीडियो साथी</h1><button id="gear" class="chip">⚙ सेटिंग</button></header>
+
+<section id="setup" class="box" hidden>
+<label>Gemini API key<input id="key" type="password" autocomplete="off" placeholder="AIza..."></label>
+<label>मॉडल का नाम<input id="model" type="text" autocapitalize="off" autocomplete="off"></label>
+<label>समझाइश की भाषा<select id="lang"><option>simple Hindi (Devanagari script)</option><option>Hinglish (Hindi written in Roman script)</option><option>simple English</option></select></label>
+<label><input type="checkbox" id="ssc" checked> परीक्षा (SSC) वाली टिप भी जोड़ो</label>
+<button id="save" class="pri">सेव करो</button>
+<p class="hint">Key सिर्फ़ इसी ब्राउज़र में रहती है, किसी को भेजी नहीं जाती। <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">यहाँ से फ़्री key बनाओ</a></p>
+</section>
+
+<div class="row"><input id="url" type="text" inputmode="url" autocapitalize="off" placeholder="YouTube लिंक यहाँ चिपकाओ"><button id="go" class="pri">शुरू करो</button></div>
+<p id="status" class="hint" role="status"></p>
+
+<main id="app" class="wrap" hidden>
+<div><div class="vid" id="vidbox"></div><nav id="chips" class="chips" aria-label="टॉपिक की लिस्ट"></nav></div>
+<aside id="card" class="panel" aria-live="polite"></aside>
+</main>
+
+<script>
+const $=i=>document.getElementById(i);
+const LS={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt=s=>{s=Math.floor(s);const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return(h?h+':'+String(m).padStart(2,'0'):m)+':'+String(x).padStart(2,'0')};
+const S={key:LS.get('vs_key')||'',model:LS.get('vs_model')||'gemini-3.7-flash',lang:+(LS.get('vs_lang')||0),ssc:LS.get('vs_ssc')!=='0'};
+let player=null,topics=[],cur=null,covered=0,runId=0,timer=null,ytp=null;
+
+function paintSetup(){$('key').value=S.key;$('model').value=S.model;$('lang').selectedIndex=S.lang;$('ssc').checked=S.ssc}
+paintSetup();
+if(!S.key){$('setup').hidden=false;say('पहले Gemini API key डालकर सेव करो, फिर YouTube लिंक चिपकाओ।')}
+$('gear').onclick=()=>{$('setup').hidden=!$('setup').hidden};
+$('save').onclick=()=>{
+ S.key=$('key').value.trim();S.model=$('model').value.trim()||'gemini-3.7-flash';S.lang=$('lang').selectedIndex;S.ssc=$('ssc').checked;
+ LS.set('vs_key',S.key);LS.set('vs_model',S.model);LS.set('vs_lang',S.lang);LS.set('vs_ssc',S.ssc?'1':'0');
+ $('setup').hidden=true;say('सेव हो गया। अब YouTube लिंक चिपकाओ।');
+};
+function say(m,err){$('status').textContent=m;$('status').className='hint'+(err?' err':'')}
+
+function vidId(u){u=u.trim();const m=u.match(/(?:v=|youtu\.be\/|shorts\/|embed\/|live\/)([\w-]{11})/);return m?m[1]:(/^[\w-]{11}$/.test(u)?u:null)}
+function toSec(v){if(typeof v==='number')return v;const p=String(v).trim().split(':').map(Number);return p.some(isNaN)?NaN:p.reduce((a,b)=>a*60+b,0)}
+function loadYT(){
+ if(ytp)return ytp;
+ return ytp=new Promise(res=>{if(window.YT&&YT.Player)return res();window.onYouTubeIframeAPIReady=res;const s=document.createElement('script');s.src='https://www.youtube.com/iframe_api';document.head.appendChild(s)});
+}
+
+/* ---------- Gemini ---------- */
+async function gem(parts){
+ const url='https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(S.model)+':generateContent';
+ const gcs=[{responseMimeType:'application/json',mediaResolution:'MEDIA_RESOLUTION_LOW',thinkingConfig:{thinkingLevel:'low'}},{responseMimeType:'application/json'}];
+ let g=0,tries=0;
+ for(;;){
+  let r;
+  try{r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':S.key},body:JSON.stringify({contents:[{role:'user',parts}],generationConfig:gcs[g]})})}
+  catch(e){throw new Error('नेटवर्क की दिक्कत: '+e.message)}
+  if(r.ok){
+   const j=await r.json();
+   const c=j.candidates&&j.candidates[0];
+   const t=((c&&c.content&&c.content.parts)||[]).filter(x=>!x.thought).map(x=>x.text||'').join('');
+   if(!t)throw new Error('खाली जवाब आया ('+((j.promptFeedback&&j.promptFeedback.blockReason)||(c&&c.finishReason)||'?')+')');
+   return t;
+  }
+  const e=await r.json().catch(()=>({}));const msg=(e.error&&e.error.message)||r.statusText;
+  if(r.status===400&&g===0&&!/API key/i.test(msg)){g=1;continue}
+  if((r.status===429||r.status>=500)&&tries<4&&!/per day|daily/i.test(msg)){tries++;say('सर्वर व्यस्त है ('+r.status+'), '+tries*20+' सेकंड रुककर दोबारा कोशिश कर रहा हूँ…');await sleep(tries*20000);continue}
+  throw new Error(r.status+': '+msg);
+ }
+}
+
+async function ask(id,a,b,clip){
+ const part={fileData:{fileUri:'https://www.youtube.com/watch?v='+id}};
+ if(clip)part.videoMetadata={startOffset:a+'s',endOffset:b+'s'};
+ const L=$('lang').options[S.lang].text;
+ const txt='You are a patient teacher helping a student who is preparing for Indian SSC exams while watching this video.'+(clip?' Focus only on the part from '+a+' to '+b+' seconds.':'')+
+ '\nListen to what the speaker explains. List every distinct topic, concept, term, place, person, event, rule or game that the speaker explains (about one entry per 20-90 seconds; skip small talk, intros and ads).'+
+ '\nReturn ONLY a JSON array. Each item: {"start": number, "end": number, "title": "name in '+L+'", "en": "exact English Wikipedia article title for this topic, used to find a picture", "points": ["3 or 4 short, simple sentences in '+L+' with key facts, numbers and dates"], "tip": '+(S.ssc?'"one short exam-oriented line in '+L+' about what SSC often asks on this"':'""')+'}.'+
+ '\n"start" and "end" are seconds counted from the very beginning of the whole video. If nothing is explained, return [].';
+ const raw=await gem([part,{text:txt}]);
+ let arr;
+ try{arr=JSON.parse(raw.replace(/^```(?:json)?|```$/g,'').trim())}catch(e){throw new Error('जवाब JSON में नहीं आया')}
+ if(!Array.isArray(arr))arr=Object.values(arr).find(Array.isArray)||[];
+ let items=arr.map(x=>{
+  const s=toSec(x.start);if(isNaN(s))return null;
+  let e=toSec(x.end);if(isNaN(e))e=s+30;
+  const pts=Array.isArray(x.points)?x.points:[x.points||''];
+  return{start:s,end:e,title:x.title||x.en||'टॉपिक',en:x.en||x.title||'',points:pts.filter(Boolean).map(String),tip:x.tip||''};
+ }).filter(Boolean);
+ if(clip&&a>0&&items.length&&Math.max(...items.map(x=>x.start))<=(b-a)+10)items.forEach(x=>{x.start+=a;x.end+=a});
+ return items;
+}
+
+async function analyse(id,dur,run){
+ const W=600,n=dur>W+60?Math.ceil(dur/W):1;
+ for(let k=0;k<n;k++){
+  if(run!==runId)return;
+  const a=k*W,b=n===1?dur:Math.min(dur,a+W);
+  say('विश्लेषण चल रहा है… भाग '+(k+1)+' / '+n+(k===0?' (पहले भाग में 20-60 सेकंड लग सकते हैं)':''));
+  const ck='vs_'+id+'_'+S.lang+'_'+(S.ssc?1:0)+'_'+k+'_'+n;
+  let items=null;const c=LS.get(ck);
+  if(c){try{items=JSON.parse(c)}catch(e){}}
+  if(!items){items=await ask(id,a,b,n>1);LS.set(ck,JSON.stringify(items))}
+  if(run!==runId)return;
+  topics=topics.concat(items).sort((x,y)=>x.start-y.start);covered=b;
+  paintChips();if(!cur)draw();
+ }
+ say('हो गया ✅ पूरा वीडियो तैयार है। वीडियो चलाओ, कार्ड अपने आप बदलेंगे।');
+}
+
+/* ---------- Wikipedia / Wikimedia pictures ---------- */
+const imgCache={};
+async function findImg(q){
+ if(!q)return null;
+ if(q in imgCache)return imgCache[q];
+ let u=null;
+ try{
+  const a=await(await fetch('https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrlimit=1&gsrsearch='+encodeURIComponent(q)+'&prop=pageimages&piprop=thumbnail&pithumbsize=700')).json();
+  const p=a.query&&Object.values(a.query.pages)[0];u=p&&p.thumbnail&&p.thumbnail.source;
+  if(!u){
+   const b=await(await fetch('https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrnamespace=6&gsrlimit=1&gsrsearch='+encodeURIComponent(q)+'&prop=imageinfo&iiprop=url&iiurlwidth=700')).json();
+   const f=b.query&&Object.values(b.query.pages)[0];u=f&&f.imageinfo&&f.imageinfo[0].thumburl;
+  }
+ }catch(e){}
+ return imgCache[q]=u||null;
+}
+
+/* ---------- UI ---------- */
+function paintChips(){
+ const nav=$('chips');nav.innerHTML='';
+ topics.forEach(t=>{const b=document.createElement('button');b.className='chip';b.textContent=t.title;b._t=t;b.onclick=()=>{if(player&&player.seekTo){player.seekTo(t.start,true);player.playVideo&&player.playVideo()}};nav.appendChild(b)});
+ mark();
+}
+function mark(){[...$('chips').children].forEach(b=>{const on=b._t===cur;b.classList.toggle('on',on);if(on&&b.scrollIntoView)b.scrollIntoView({block:'nearest',inline:'center'})})}
+function draw(){
+ const c=$('card');
+ if(!cur){c.innerHTML='<p class="hint">'+(covered?'यहाँ तक कोई ख़ास टॉपिक नहीं मिला। वीडियो चलाओ, कार्ड अपने आप आएँगे।':'विश्लेषण चल रहा है। पहला कार्ड बनते ही यहाँ दिखेगा।')+'</p>';return}
+ const t=cur;
+ c.innerHTML='<div id="ph"></div><h2>'+esc(t.title)+(t.en&&t.en!==t.title?'<small>'+esc(t.en)+'</small>':'')+'</h2><ul>'+t.points.map(p=>'<li>'+esc(p)+'</li>').join('')+'</ul>'+(t.tip?'<div class="tip">💡 '+esc(t.tip)+'</div>':'')+'<p class="hint" style="padding:6px 0 0">'+fmt(t.start)+' से</p>';
+ findImg(t.en).then(u=>{const ph=$('ph');if(u&&cur===t&&ph)ph.innerHTML='<img src="'+esc(u)+'" alt="'+esc(t.en)+'" onerror="this.remove()"><p class="cap">फ़ोटो: Wikipedia / Wikimedia</p>'});
+ mark();
+}
+function tick(){
+ if(!player||!player.getCurrentTime)return;
+ const t=player.getCurrentTime();let c=null;
+ for(const x of topics){if(x.start<=t+0.5)c=x;else break}
+ if(c!==cur){cur=c;draw()}
+}
+
+$('go').onclick=async()=>{
+ if(!S.key){$('setup').hidden=false;say('पहले Gemini API key डालकर सेव करो।',1);return}
+ const id=vidId($('url').value);
+ if(!id){say('ये YouTube लिंक नहीं लग रहा। पूरा लिंक चिपकाओ।',1);return}
+ const run=++runId;topics=[];cur=null;covered=0;$('chips').innerHTML='';$('app').hidden=false;draw();
+ say('वीडियो खोल रहा हूँ…');
+ try{
+  await loadYT();
+  $('vidbox').innerHTML='<div id="yt"></div>';
+  player=new YT.Player('yt',{videoId:id,playerVars:{playsinline:1,rel:0}});
+  say('वीडियो की लंबाई पता कर रहा हूँ… अगर यहीं अटके तो वीडियो को एक बार प्ले करो।');
+  let d=0;
+  while(run===runId&&!(d>0)){await sleep(500);try{d=player.getDuration()}catch(e){}}
+  if(run!==runId)return;
+  clearInterval(timer);timer=setInterval(tick,500);
+  await analyse(id,d,run);
+ }catch(e){
+  const m=String(e.message||e);
+  say(/API key/i.test(m)?'Key गलत लग रही है। ⚙ सेटिंग में दोबारा डालो। ('+m+')':'दिक्कत: '+m,1);
+ }
+};
+</script>
+</body>
+</html>
